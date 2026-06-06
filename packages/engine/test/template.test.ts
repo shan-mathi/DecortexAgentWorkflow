@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import type { NodeContext } from "@workflow-engine/shared";
 
-import { TemplateError, resolveTemplate } from "./template.js";
+import { TemplateError, resolveTemplate } from "../src/template.js";
 
 function ctx(
   upstream: NodeContext["upstream"],

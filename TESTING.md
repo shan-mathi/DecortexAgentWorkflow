@@ -6,19 +6,21 @@ The brief's question is *test judgment*, not coverage. The structuring claim of 
 
 | Layer | Where | Provider | Runs | Asserts |
 | --- | --- | --- | --- | --- |
-| Unit (engine internals) | `packages/engine/src/*.test.ts` | FakeLLM (often none) | every commit | topoLevels property test, validateDag aggregation, retry semantics, sandbox allow/deny, template substitution + missing-ref errors |
+| Unit (engine internals) | `packages/engine/test/*.test.ts` | FakeLLM (often none) | every commit | topoLevels property test, validateDag aggregation, retry semantics, sandbox allow/deny, template substitution + missing-ref errors |
 | Plugin contract (parameterised) | `packages/engine/src/testing/pluginContract.ts` | FakeLLM | every commit | every `NodeExecutor` accepts valid configs, rejects invalid, returns well-formed `NodeResult`, surfaces thrown errors as `status: FAILED` |
-| Schema round-trips | `packages/shared/src/schemas.test.ts` | n/a | every commit | Zod schemas accept fixtures, reject malformed input |
-| FakeLLM behaviour | `packages/fake-llm/src/fakeLlm.test.ts` | n/a | every commit | sha1 determinism, sha256 vector + L2 norm, latency distribution sampling, failure injection at rate=0 / rate=1 |
-| Engine orchestration | `packages/engine/src/runWorkflow.test.ts` | FakeLLM | every commit | linear, diamond context merge, branch skipping, terminal-on-failure, parallel-level timing, idempotent append |
+| Schema round-trips | `packages/shared/test/schemas.test.ts` | n/a | every commit | Zod schemas accept fixtures, reject malformed input |
+| FakeLLM behaviour | `packages/fake-llm/test/fakeLlm.test.ts` | n/a | every commit | sha1 determinism, sha256 vector + L2 norm, latency distribution sampling, failure injection at rate=0 / rate=1 |
+| Engine orchestration | `packages/engine/test/runWorkflow.test.ts` | FakeLLM | every commit | linear, diamond context merge, branch skipping, terminal-on-failure, parallel-level timing, idempotent append |
 | API routes | `packages/api/test/api.test.ts` | FakeLLM | every commit | 400 Zod, 400 DAG, 413 oversized input, 202 trigger, full trace fetch, `/node-types` lists all five |
-| Storage integration | `packages/storage/test/{workflowRepo,runRepo}.test.ts` | n/a | every commit (Docker) | round-trips, version bump, idempotent `appendNodeExecution`, `listRuns` ordering |
+| Storage integration | `packages/storage/test/{workflowRepo,runRepo}.test.ts` | n/a | every commit (both in-memory + Postgres when Docker available) | round-trips, version bump, idempotent `appendNodeExecution`, `listRuns` ordering |
 | Retrieval pipeline | `packages/storage/test/retrievalPipeline.test.ts` | FakeLLM | every commit (Docker) | self-similarity property: querying with the exact text of a seeded row returns that row first |
 | End-to-end | `packages/storage/test/runWorkflow.e2e.test.ts` | FakeLLM | every commit (Docker) | ops-ticket-router runs through Postgres + pgvector, trace persisted, token usage attributed only to LLM + kb-retrieval nodes |
 | Eval (15 hand-crafted tickets) | `pnpm eval` | FakeLLM by default; real LLM under `EVAL_REAL_LLM=1` | nightly + on demand | structural correctness only — `urgency ∈ {LOW,MED,HIGH}`, branch resolved, draft non-empty. Never asserts on exact LLM wording. |
 | Load | `pnpm load` | **FakeLLM only — refuses real provider** | on demand | throughput, P50/P99 per node; produces an "expected bottleneck order" report |
 
-Tests without Docker (the unit + API integration layer, ~95 tests) run in <2 seconds with no network. Tests with Docker (storage + e2e + retrieval, ~9 tests) gracefully skip when Docker is absent so the unit suite still passes everywhere.
+Tests run in two modes:
+- **No Docker required (~110 tests)**: unit + API integration + storage (in-memory repos) in <2.5 seconds. This is the default, runs everywhere.
+- **With Docker (~4 additional Postgres storage tests + 2 e2e + 1 retrieval)**: validates real Postgres behavior. Storage tests detect which implementation is available and run both when Docker is running.
 
 ## C1 — Data corpus
 
@@ -33,9 +35,10 @@ Tests without Docker (the unit + API integration layer, ~95 tests) run in <2 sec
 **HTTP nodes:** unit tests stub `fetch` via `vi.stubGlobal`. We deliberately do not record/replay third-party APIs in the test suite for this take-home — it would be the next thing to add for production.
 
 **What runs when:**
-- Every commit: unit + plugin contract + API integration + (with Docker) storage integration + retrieval pipeline + e2e. ~104 tests total.
-- Nightly (proposed): the eval suite under `EVAL_REAL_LLM=1` against one canary case per category, and the load test at a higher concurrency. Today this is "on demand" because we don't have a real key wired.
-- Pre-release: full eval against the real provider on every case + a manual smoke against a deployed environment.
+- **Every commit (everywhere, no Docker required)**: unit + plugin contract + API integration + storage (in-memory repos only). ~110 tests total, <2.5 seconds.
+- **Every commit (with Docker available)**: all above + storage Postgres implementations + retrieval pipeline + e2e. ~117 tests total.
+- **Nightly (proposed)**: the eval suite under `EVAL_REAL_LLM=1` against one canary case per category, and the load test at a higher concurrency. Today this is "on demand" because we don't have a real key wired.
+- **Pre-release**: full eval against the real provider on every case + a manual smoke against a deployed environment.
 
 **Software correctness vs agent quality** — this is the load-bearing distinction. Software correctness lives in the deterministic layers above. Agent quality is graded by humans on real-LLM eval samples; the eval runner asserts only on *structural* correctness so it can run on every commit without brittleness against LLM wording.
 
@@ -54,7 +57,7 @@ Tests without Docker (the unit + API integration layer, ~95 tests) run in <2 sec
 
 ## One bug the suite catches today
 
-**Diamond-DAG context merge.** A node with two upstream parents must see *both* parents' outputs in `ctx.upstream` — a naive level-local map would only show the most recent level's outputs. We assert this in two places: `packages/engine/src/runWorkflow.test.ts` "merges both upstream outputs into a join node's ctx (diamond)" against in-memory repos, and `packages/storage/test/runWorkflow.e2e.test.ts` against real Postgres. Either test would fail if `parentOutputs` regressed to using only the immediately-prior level's outputs. The bug is real because the executor processes levels but joins reach back across levels.
+**Diamond-DAG context merge.** A node with two upstream parents must see *both* parents' outputs in `ctx.upstream` — a naive level-local map would only show the most recent level's outputs. We assert this in three places: `packages/engine/test/runWorkflow.test.ts` against in-memory repos, `packages/storage/test/runRepo.test.ts` against both in-memory and Postgres implementations (in-memory runs every commit, Postgres when Docker available), and `packages/storage/test/runWorkflow.e2e.test.ts` against real Postgres (Docker required). Either test would fail if `parentOutputs` regressed to using only the immediately-prior level's outputs. The bug is real because the executor processes levels but joins reach back across levels.
 
 ## One bug the suite misses today
 

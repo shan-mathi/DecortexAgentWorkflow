@@ -23,7 +23,7 @@ import {
   RateLimitError,
   TimeoutError,
   sampleLatencyMs,
-} from "./index.js";
+} from "../src/index.js";
 
 const sha1 = (s: string) => createHash("sha1").update(s).digest("hex");
 

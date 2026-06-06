@@ -3,7 +3,8 @@
 // What this test buys: it proves the entire retrieval pipeline —
 // embedding generation, pgvector cosine query, top-K ordering — works
 // correctly, deterministically, with no real LLM and no flakiness.
-// Runs on every commit (when Docker is available).
+// Runs on every commit (uses mock when Docker is unavailable, real
+// Postgres when available).
 //
 // Mechanism: FakeLLM produces a deterministic vector for any given
 // text. We seed `tickets_seed` with the fixture corpus and run the
@@ -16,7 +17,7 @@
 // property is enough to prove the pipeline plumbing is correct.
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -24,6 +25,7 @@ import { FakeLLM } from "@workflow-engine/fake-llm";
 import { KnowledgeBaseRetrievalNode, type QueryRunner } from "@workflow-engine/engine";
 
 import { dockerAvailable, startPg, type PgHarness } from "./testcontainersHelper.js";
+import { createMockQueryRunner, MockVectorStore } from "./mockQueryRunner.js";
 
 interface Ticket {
   id: string;
@@ -34,49 +36,69 @@ interface Ticket {
 }
 
 const runIntegration = dockerAvailable();
-const d = runIntegration ? describe : describe.skip;
 
-d("kb-retrieval pipeline (testcontainers)", () => {
-  let harness: PgHarness;
+describe("kb-retrieval pipeline", () => {
+  let harness: PgHarness | undefined;
   let llm: FakeLLM;
+  let runner: QueryRunner;
+  let mockVectorStore: MockVectorStore | undefined;
 
-  const fixturePath = join(
-    new URL("../../..", import.meta.url).pathname,
-    "fixtures",
-    "tickets",
-    "seed.json",
+  const fixturePath = fileURLToPath(
+    new URL("../../../fixtures/tickets/seed.json", import.meta.url),
   );
   const corpus: Ticket[] = JSON.parse(readFileSync(fixturePath, "utf8"));
 
   beforeAll(async () => {
-    harness = await startPg();
     llm = new FakeLLM({ embeddingDim: 1536 });
 
-    for (const t of corpus) {
-      const { vector } = await llm.embed({ text: `${t.subject}\n${t.body}` });
-      const vec = `[${vector.join(",")}]`;
-      await harness.pool.query(
-        `INSERT INTO tickets_seed (id, subject, body, resolution, urgency, embedding)
-         VALUES ($1, $2, $3, $4, $5, $6::vector)`,
-        [t.id, t.subject, t.body, t.resolution, t.urgency, vec],
-      );
+    if (runIntegration) {
+      // Docker available: use real Postgres
+      harness = await startPg();
+
+      for (const t of corpus) {
+        const { vector } = await llm.embed({ text: `${t.subject}\n${t.body}` });
+        const vec = `[${vector.join(",")}]`;
+        await harness.pool.query(
+          `INSERT INTO tickets_seed (id, subject, body, resolution, urgency, embedding)
+           VALUES ($1, $2, $3, $4, $5, $6::vector)`,
+          [t.id, t.subject, t.body, t.resolution, t.urgency, vec],
+        );
+      }
+
+      runner = {
+        query: async (sql, params) => {
+          const r = await harness!.pool.query(sql, params);
+          return { rows: r.rows };
+        },
+      };
+    } else {
+      // No Docker: use mock in-memory vector store
+      mockVectorStore = new MockVectorStore();
+
+      for (const t of corpus) {
+        const { vector } = await llm.embed({ text: `${t.subject}\n${t.body}` });
+        await mockVectorStore.insert({
+          id: t.id,
+          subject: t.subject,
+          body: t.body,
+          resolution: t.resolution,
+          urgency: t.urgency,
+          embedding: vector,
+        });
+      }
+
+      runner = createMockQueryRunner(mockVectorStore);
     }
   }, 180_000);
 
   afterAll(async () => {
     await harness?.stop();
+    mockVectorStore?.clear();
   });
 
   it("retrieves the corpus row with the exact same text as the top match", async () => {
     const target = corpus[0]!;
     const queryText = `${target.subject}\n${target.body}`;
-
-    const runner: QueryRunner = {
-      query: async (sql, params) => {
-        const r = await harness.pool.query(sql, params);
-        return { rows: r.rows };
-      },
-    };
 
     const node = new KnowledgeBaseRetrievalNode(runner, llm);
     const cfg = node.configSchema.parse({

@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import type { WorkflowDef } from "@workflow-engine/shared";
 
-import { topoLevels, validateDag } from "./dag.js";
+import { topoLevels, validateDag } from "../src/dag.js";
 
 function node(id: string, type = "transform") {
   return { id, type, config: {}, position_x: 0, position_y: 0 };

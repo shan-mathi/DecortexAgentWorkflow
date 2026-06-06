@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import { FakeLLM } from "@workflow-engine/fake-llm";
 
-import { pluginContract } from "../testing/pluginContract.js";
-import { KnowledgeBaseRetrievalNode, type QueryRunner } from "./kbRetrieval.js";
+import { pluginContract } from "../src/testing/pluginContract.js";
+import { KnowledgeBaseRetrievalNode, type QueryRunner } from "../src/plugins/kbRetrieval.js";
 
 const fakeDb: QueryRunner = {
   async query() {

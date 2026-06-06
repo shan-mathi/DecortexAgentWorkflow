@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { SandboxError, evalExpression } from "./sandbox.js";
+import { SandboxError, evalExpression } from "../src/sandbox.js";
 
 describe("evalExpression — allowed", () => {
   it("evaluates arithmetic", () => {

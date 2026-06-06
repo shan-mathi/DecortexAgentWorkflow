@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { pluginContract } from "../testing/pluginContract.js";
-import { BranchNode } from "./branch.js";
+import { pluginContract } from "../src/testing/pluginContract.js";
+import { BranchNode } from "../src/builtins/branch.js";
 
 const node = new BranchNode();
 

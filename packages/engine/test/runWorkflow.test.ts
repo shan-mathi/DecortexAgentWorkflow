@@ -18,9 +18,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { NodeContext, NodeResult, WorkflowDef } from "@workflow-engine/shared";
 
-import { NodeRegistry, type NodeExecutor } from "./registry.js";
-import { runWorkflow } from "./runWorkflow.js";
-import { InMemoryRunRepo } from "./testing/inMemoryRepos.js";
+import { NodeRegistry, type NodeExecutor } from "../src/registry.js";
+import { runWorkflow } from "../src/runWorkflow.js";
+import { InMemoryRunRepo } from "../src/testing/inMemoryRepos.js";
 
 function node(
   id: string,

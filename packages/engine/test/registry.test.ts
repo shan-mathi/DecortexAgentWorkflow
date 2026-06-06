@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { describe, expect, it } from "vitest";
 
-import { NodeRegistry, UnknownNodeTypeError, type NodeExecutor } from "./registry.js";
+import { NodeRegistry, UnknownNodeTypeError, type NodeExecutor } from "../src/registry.js";
 
 function fakeExecutor(type: string): NodeExecutor {
   return {

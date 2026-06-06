@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { pluginContract } from "../testing/pluginContract.js";
-import { TransformNode } from "./transform.js";
+import { pluginContract } from "../src/testing/pluginContract.js";
+import { TransformNode } from "../src/builtins/transform.js";
 
 const node = new TransformNode();
 

@@ -37,8 +37,8 @@ Watch the trace page — graph nodes recolour as the run progresses; click any n
 
 | Capability | Verified by |
 | --- | --- |
-| Plugin contract: implement `NodeExecutor`, register once, no executor change | `packages/engine/src/builtins/*.test.ts`, `packages/engine/src/plugins/kbRetrieval.test.ts` (5 contract suites) |
-| DAG executor: parallel levels, retries, branch skipping, terminal failure | `packages/engine/src/runWorkflow.test.ts` |
+| Plugin contract: implement `NodeExecutor`, register once, no executor change | `packages/engine/test/builtins/*.test.ts`, `packages/engine/test/kbRetrieval.test.ts` (5 contract suites) |
+| DAG executor: parallel levels, retries, branch skipping, terminal failure | `packages/engine/test/runWorkflow.test.ts` |
 | Diamond-DAG context merge (the bug the suite catches today) | `packages/engine/src/runWorkflow.test.ts` "diamond" + `packages/storage/test/runWorkflow.e2e.test.ts` |
 | Postgres CRUD + run trace persistence with `(run_id, node_id)` idempotency | `packages/storage/test/{workflowRepo,runRepo}.test.ts` |
 | Deterministic vector retrieval (FakeLLM-seeded, exact id ordering) | `packages/storage/test/retrievalPipeline.test.ts` |

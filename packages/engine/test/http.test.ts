@@ -6,8 +6,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pluginContract } from "../testing/pluginContract.js";
-import { HTTPNode } from "./http.js";
+import { pluginContract } from "../src/testing/pluginContract.js";
+import { HTTPNode } from "../src/builtins/http.js";
 
 const node = new HTTPNode();
 

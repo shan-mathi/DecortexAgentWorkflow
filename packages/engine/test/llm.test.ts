@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { FakeLLM } from "@workflow-engine/fake-llm";
 
-import { pluginContract } from "../testing/pluginContract.js";
-import { LLMConfigSchema, LLMNode } from "./llm.js";
+import { pluginContract } from "../src/testing/pluginContract.js";
+import { LLMConfigSchema, LLMNode } from "../src/builtins/llm.js";
 
 const llm = new FakeLLM();
 const node = new LLMNode(llm);

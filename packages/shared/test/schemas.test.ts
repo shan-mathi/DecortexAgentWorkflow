@@ -12,7 +12,7 @@ import {
   RunStatusSchema,
   RunTraceSchema,
   WorkflowDefSchema,
-} from "./index.js";
+} from "../src/index.js";
 
 describe("WorkflowDefSchema", () => {
   it("accepts a minimal valid workflow", () => {

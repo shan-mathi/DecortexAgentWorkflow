@@ -13,8 +13,8 @@ import { describe, expect, it } from "vitest";
 
 import type { NodeContext, NodeDef, NodeResult } from "@workflow-engine/shared";
 
-import { NonRetryableError, runNodeWithRetry } from "./retry.js";
-import type { NodeExecutor } from "./registry.js";
+import { NonRetryableError, runNodeWithRetry } from "../src/retry.js";
+import type { NodeExecutor } from "../src/registry.js";
 
 function defNode(retry?: { maxAttempts: number; backoffMs: number; jitter: number }): NodeDef {
   return {
