@@ -1,0 +1,154 @@
+[
+  {
+    "name": "happy-path-urgent-outage",
+    "input": {
+      "subject": "Production API down across us-east-1",
+      "body": "All requests are returning 503 since 14:05 UTC. Customers are unable to check out. Suspect ALB misconfiguration after the 14:00 deploy."
+    },
+    "expected": {
+      "anyUrgency": ["HIGH", "MED"],
+      "branchTaken": "fetchSimilar"
+    }
+  },
+  {
+    "name": "happy-path-low-priority",
+    "input": {
+      "subject": "How do I export my data?",
+      "body": "Where do I find the data export tool? I want to download all my account history."
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED"]
+    }
+  },
+  {
+    "name": "ambiguous-wording",
+    "input": {
+      "subject": "Things are slow",
+      "body": "Things have been a bit slow today, not sure what is happening but it's frustrating."
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED", "HIGH"]
+    }
+  },
+  {
+    "name": "rage-typing-half-sentences",
+    "input": {
+      "subject": "DOWN!!",
+      "body": "down. cant login. nothing works. fix asap."
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED", "HIGH"]
+    }
+  },
+  {
+    "name": "multilingual-french-and-english",
+    "input": {
+      "subject": "Service est tombé / Service is down",
+      "body": "Bonjour, je n'arrive plus à me connecter. Connection completely refused. Région: Paris."
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED", "HIGH"]
+    }
+  },
+  {
+    "name": "malformed-json-in-body",
+    "input": {
+      "subject": "API integration broken",
+      "body": "We are sending {\"event\": \"order_created\", \"id\": 12345 and getting 400. Looks like the JSON is being rejected. Please advise."
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED", "HIGH"]
+    }
+  },
+  {
+    "name": "duplicate-charge-payments",
+    "input": {
+      "subject": "Customer reports duplicate charge",
+      "body": "Customer says they were charged twice for the same order. Our logs show two completed charges 800ms apart. Need to refund one."
+    },
+    "expected": {
+      "anyUrgency": ["HIGH", "MED"],
+      "branchTaken": "fetchSimilar"
+    }
+  },
+  {
+    "name": "feature-request-not-an-incident",
+    "input": {
+      "subject": "Feature request: dark mode",
+      "body": "Would love to see a dark mode for the dashboard."
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED"]
+    }
+  },
+  {
+    "name": "compliance-deadline-pressure",
+    "input": {
+      "subject": "GDPR deletion request stuck",
+      "body": "Submitted a deletion request 14 days ago. Got an acknowledgement but no completion email. Legal is pinging us about the SLA."
+    },
+    "expected": {
+      "anyUrgency": ["HIGH", "MED"]
+    }
+  },
+  {
+    "name": "intermittent-flaky-ratio",
+    "input": {
+      "subject": "Stripe webhooks failing 1 in 50",
+      "body": "About 1 in 50 webhooks fail signature verification. Retries succeed. We are dropping events occasionally."
+    },
+    "expected": {
+      "anyUrgency": ["MED", "HIGH"]
+    }
+  },
+  {
+    "name": "very-short-subject-no-body",
+    "input": {
+      "subject": "?",
+      "body": ""
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED", "HIGH"]
+    }
+  },
+  {
+    "name": "long-narrative-incident",
+    "input": {
+      "subject": "Lambda cold start times tripled overnight",
+      "body": "Our checkout Lambda P99 cold start went from 800ms to 2.4s overnight. Warm invocations unchanged. No deploy in 3 days. We checked CloudWatch metrics and the regression is consistent across all functions in us-east-1. We suspect it is an AWS-wide issue but want to confirm this is not on our side."
+    },
+    "expected": {
+      "anyUrgency": ["MED", "HIGH"]
+    }
+  },
+  {
+    "name": "kafka-consumer-lag",
+    "input": {
+      "subject": "Kafka consumer lag growing on order-events",
+      "body": "Lag has been growing for 2 hours on order-events. Consumer group orders-v2. We are about to start dropping messages on retention. Need eyes on this."
+    },
+    "expected": {
+      "anyUrgency": ["HIGH", "MED"]
+    }
+  },
+  {
+    "name": "billing-dispute",
+    "input": {
+      "subject": "Invoice for last month is wrong",
+      "body": "Our invoice shows usage we did not have. We paused the system for 3 weeks and were on vacation. Need a refund or credit."
+    },
+    "expected": {
+      "anyUrgency": ["MED", "LOW"]
+    }
+  },
+  {
+    "name": "documentation-link-broken",
+    "input": {
+      "subject": "Where is the v3 API reference?",
+      "body": "Hi team — looking for the v3 API reference. The link in our internal docs is broken. Could you point me to the right URL?"
+    },
+    "expected": {
+      "anyUrgency": ["LOW", "MED"]
+    }
+  }
+]

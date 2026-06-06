@@ -1,0 +1,142 @@
+[
+  {
+    "id": "11111111-0000-4000-8000-000000000001",
+    "subject": "Production API returning 503 across us-east-1",
+    "body": "All inbound traffic to our public API is failing with 503 in us-east-1. Started ~10 minutes ago. Suspect upstream dependency; we are losing customer data writes.",
+    "resolution": "ALB target group had 0 healthy targets after a deploy. Rollback restored traffic; root cause was a bad health-check path in the new revision.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000002",
+    "subject": "Database connection pool exhausted on payments service",
+    "body": "Payments service is throwing 'too many connections' from the Postgres pool. Latency P99 is over 12s and customers are unable to check out.",
+    "resolution": "Connection leak from a new background job that did not call client.release(). Patched and rolled forward; pool size was never the problem.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000003",
+    "subject": "Customer cannot reset their password",
+    "body": "User reports that the password reset email never arrives. They have tried twice and waited 30 minutes. Email is on a corporate domain.",
+    "resolution": "Recipient domain rejected our SES emails as spam. Added DKIM record and re-sent; one-off issue per customer.",
+    "urgency": "LOW"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000004",
+    "subject": "Two-factor authentication codes are arriving 5 minutes late",
+    "body": "Several users complaining that SMS 2FA codes arrive after they have expired. Started yesterday afternoon.",
+    "resolution": "SMS provider was rate-limiting our account due to a 3x traffic spike from a marketing campaign. Increased capacity tier.",
+    "urgency": "MED"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000005",
+    "subject": "Stale data shown on dashboard",
+    "body": "The analytics dashboard is showing yesterday's numbers. Customer is concerned the cache is stuck. Not blocking, but reflects poorly.",
+    "resolution": "Materialised view refresh job failed silently due to a missing column on the source table. Re-ran job after schema fix.",
+    "urgency": "MED"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000006",
+    "subject": "Webhook deliveries failing for one customer",
+    "body": "Customer X reports their webhook endpoint receives nothing. We see 200s in our logs. They are on a self-hosted endpoint behind a corporate firewall.",
+    "resolution": "Customer's firewall allowlist did not include our new outbound NAT IP. Documented in the public IP-allowlist KB.",
+    "urgency": "LOW"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000007",
+    "subject": "S3 lifecycle rule deleted production logs prematurely",
+    "body": "An ops engineer notes that yesterday's logs are missing from the production bucket. We need them for a SOC2 audit due tomorrow.",
+    "resolution": "Lifecycle rule was set to 7d retention by a config drift. Restored from cross-region replica; reset rule to 365d.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000008",
+    "subject": "How do I export my data?",
+    "body": "Where do I find the data export tool? I want to download all my account history.",
+    "resolution": "Pointed customer at Settings → Privacy → Export. Link change had not been reflected in the help center yet.",
+    "urgency": "LOW"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000009",
+    "subject": "Lambda cold start times tripled overnight",
+    "body": "Our checkout Lambda P99 cold start went from 800ms to 2.4s overnight. Warm invocations unchanged. No deploy in 3 days.",
+    "resolution": "AWS region had elevated cold-start latency. Mitigated with provisioned concurrency on the checkout function.",
+    "urgency": "MED"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000010",
+    "subject": "Stripe webhook signature verification failing intermittently",
+    "body": "About 1 in 50 Stripe webhooks fail signature verification. The retries succeed. We are dropping events occasionally.",
+    "resolution": "Body buffer was being parsed by middleware before signature check. Reordered middleware so raw body reaches verifier first.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000011",
+    "subject": "Site is down — cannot login",
+    "body": "down. cant login. nothing works. fix asap",
+    "resolution": "Customer was on a stale browser session pinned to a deprecated CDN edge. Hard refresh fixed it; documented in FAQ.",
+    "urgency": "MED"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000012",
+    "subject": "Le service est tombé / Service is down",
+    "body": "Bonjour, je n'arrive plus à me connecter au service depuis ce matin. Connection completely refused. Région: Paris.",
+    "resolution": "EU-WEST-3 had a partial AZ outage on the us-managed CDN. Re-routed traffic to the secondary edge.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000013",
+    "subject": "Invoice for last month is wrong",
+    "body": "Our invoice shows usage we did not have. We were on vacation and the system was paused for 3 weeks.",
+    "resolution": "Pause flag did not propagate to the metering pipeline due to a race. Issued credit; engineering filed a long-term fix.",
+    "urgency": "MED"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000014",
+    "subject": "Kafka consumer lag growing unboundedly on order-events topic",
+    "body": "Lag has been growing for 2 hours on order-events. Consumer group orders-v2. We are about to start dropping messages on retention.",
+    "resolution": "Consumer was stuck on a poison message that threw on parse. Added DLQ pattern; redeployed; lag drained in 8 min.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000015",
+    "subject": "Where is the API documentation for v3?",
+    "body": "Hi team — looking for the v3 API reference. The link in our internal docs is broken.",
+    "resolution": "Pointed customer at api.example.com/v3/reference. Updated the broken internal link.",
+    "urgency": "LOW"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000016",
+    "subject": "Customer reports duplicate charge after retry",
+    "body": "Customer says they were charged twice for the same order. Our logs show two completed charges with adjacent timestamps.",
+    "resolution": "Retry on 504 from upstream payment gateway did not check for idempotency. Added Idempotency-Key header to all retries.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000017",
+    "subject": "PDF export shows blank pages on long invoices",
+    "body": "When exporting an invoice with more than ~30 line items, every page after page 2 is blank. Smaller invoices are fine.",
+    "resolution": "Pagination off-by-one in the renderer when item count crossed the per-page boundary. Patched and backfilled affected exports.",
+    "urgency": "MED"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000018",
+    "subject": "Feature request: dark mode for dashboard",
+    "body": "It would be nice to have a dark mode for the dashboard, the white background is hard on the eyes at night.",
+    "resolution": "Routed to product backlog; not a support issue.",
+    "urgency": "LOW"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000019",
+    "subject": "GDPR data deletion request not completing",
+    "body": "Submitted a deletion request 14 days ago. Got an acknowledgement but no completion email. Legal is pinging us.",
+    "resolution": "Worker was stuck on a row in audit_log with a NULL FK. Fixed migration; completed the deletion; emailed customer.",
+    "urgency": "HIGH"
+  },
+  {
+    "id": "11111111-0000-4000-8000-000000000020",
+    "subject": "Wrong timezone in scheduled reports",
+    "body": "Daily reports are arriving at 3am local instead of 9am. Looks like a TZ bug.",
+    "resolution": "Scheduler was using UTC after a server migration; reset config to use customer's saved TZ.",
+    "urgency": "LOW"
+  }
+]

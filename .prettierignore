@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+coverage
+.pnpm-store
+pnpm-lock.yaml
+preflabel-iri-cache.json
+
+# Spec / assignment source documents — owned by the human authors, not auto-formatted
+.kiro
+fullstack-assignment-1.md

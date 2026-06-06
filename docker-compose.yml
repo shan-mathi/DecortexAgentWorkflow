@@ -1,0 +1,24 @@
+# Single Postgres service with the pgvector extension preinstalled.
+# `docker compose up -d` is the one prerequisite for `pnpm dev` and
+# `pnpm test:integration`. No AWS, no LocalStack — local dev is the
+# primary author-loop per the design.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-workflow-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  postgres_data:
