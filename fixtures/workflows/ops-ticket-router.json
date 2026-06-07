@@ -1,7 +1,7 @@
 {
   "id": "33333333-3333-4333-8333-333333333333",
   "name": "ops-ticket-router",
-  "description": "Classify urgency, retrieve similar past tickets, draft a customer reply.",
+  "description": "Classify urgency, always retrieve similar past tickets, then draft a reply appropriate to the urgency.",
   "nodes": [
     {
       "id": "classify",
@@ -15,22 +15,6 @@
       "position_y": 0
     },
     {
-      "id": "branch",
-      "type": "branch",
-      "name": "Route by urgency",
-      "config": {
-        "expression": "upper(nodes.classify.text)",
-        "branches": {
-          "HIGH": "fetchSimilar",
-          "MED": "fetchSimilar",
-          "LOW": "draftLow"
-        },
-        "default": "draftLow"
-      },
-      "position_x": 200,
-      "position_y": 0
-    },
-    {
       "id": "fetchSimilar",
       "type": "kb-retrieval",
       "name": "Find 3 most similar past tickets",
@@ -39,8 +23,24 @@
         "queryTemplate": "{{input.subject}}\n{{input.body}}",
         "topK": 3
       },
+      "position_x": 200,
+      "position_y": 0
+    },
+    {
+      "id": "branch",
+      "type": "branch",
+      "name": "Route by urgency",
+      "config": {
+        "expression": "upper(nodes.classify.text)",
+        "branches": {
+          "HIGH": "draftReply",
+          "MED": "draftReply",
+          "LOW": "draftLow"
+        },
+        "default": "draftLow"
+      },
       "position_x": 400,
-      "position_y": -80
+      "position_y": 0
     },
     {
       "id": "draftReply",
@@ -58,17 +58,17 @@
       "type": "llm",
       "name": "Draft generic ack (low priority)",
       "config": {
-        "promptTemplate": "Send a generic acknowledgement to the customer:\nSubject: {{input.subject}}\n\nThank them and tell them we'll respond within 2 business days.",
+        "promptTemplate": "Send a generic acknowledgement to the customer:\nSubject: {{input.subject}}\n\nSimilar past issues we resolved:\n{{fetchSimilar.documents}}\n\nThank them and tell them we'll respond within 2 business days.",
         "model": "gpt-4o-mini"
       },
-      "position_x": 400,
+      "position_x": 600,
       "position_y": 80
     }
   ],
   "edges": [
-    { "from": "classify", "to": "branch" },
-    { "from": "branch", "to": "fetchSimilar" },
-    { "from": "fetchSimilar", "to": "draftReply" },
+    { "from": "classify", "to": "fetchSimilar" },
+    { "from": "fetchSimilar", "to": "branch" },
+    { "from": "branch", "to": "draftReply" },
     { "from": "branch", "to": "draftLow" }
   ]
 }

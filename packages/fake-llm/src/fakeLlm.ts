@@ -34,6 +34,12 @@ export interface FakeLLMOptions {
   embeddingDim?: number;
   /** Override RNG for deterministic latency / failure rolls in tests. */
   rng?: () => number;
+  /**
+   * Called when no canned match exists. Return a string to use as the
+   * response; return `undefined` to fall through to the default
+   * placeholder. Enables pattern-matched realistic outputs for dev.
+   */
+  defaultResponse?: (prompt: string) => string | undefined;
 }
 
 const DEFAULT_DIM = 1536;
@@ -75,6 +81,7 @@ export class FakeLLM implements LLMProvider {
   private readonly failure: FailureConfig | undefined;
   private readonly dim: number;
   private readonly rng: () => number;
+  private readonly defaultResponseFn: ((prompt: string) => string | undefined) | undefined;
 
   constructor(opts: FakeLLMOptions = {}) {
     this.canned = opts.cannedResponses ?? new Map();
@@ -82,6 +89,7 @@ export class FakeLLM implements LLMProvider {
     this.failure = opts.failure;
     this.dim = opts.embeddingDim ?? DEFAULT_DIM;
     this.rng = opts.rng ?? Math.random;
+    this.defaultResponseFn = opts.defaultResponse;
   }
 
   async complete(args: {
@@ -94,7 +102,10 @@ export class FakeLLM implements LLMProvider {
       throw failureForKind(this.failure!.kind);
     }
     const key = sha1(args.prompt);
-    const text = this.canned.get(key) ?? defaultFor(args.prompt);
+    const text =
+      this.canned.get(key) ??
+      this.defaultResponseFn?.(args.prompt) ??
+      defaultFor(args.prompt);
     return { text, tokenUsage: estimateTokens(args.prompt, text) };
   }
 

@@ -114,7 +114,9 @@ describe("runWorkflow", () => {
 
     const r = await runWorkflow(def, {}, runId, { registry, runRepo });
     expect(r.status).toBe("SUCCEEDED");
-    expect(Object.keys(observed ?? {}).sort()).toEqual(["b", "c"]);
+    // All ancestors of `d` are visible: `a` (root), `b`, `c` (both parents).
+    // The diamond-DAG property: both `b` AND `c` are present (not just one).
+    expect(Object.keys(observed ?? {}).sort()).toEqual(["a", "b", "c"]);
   });
 
   it("skips the non-taken subtree behind a Branch", async () => {

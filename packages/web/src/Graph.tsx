@@ -49,7 +49,7 @@ export function Graph({ def, statusByNodeId, onNodeClick, selectedNodeId }: Grap
       return {
         id: n.id,
         position: { x: n.position_x, y: n.position_y },
-        data: { label: nodeLabel(n.id, n.name, t?.displayName ?? n.type) },
+        data: { label: nodeLabel(n.id, n.name, t?.displayName ?? n.type, n.type) },
         style: {
           background: status ? statusBg[status] : "#fff",
           border: `1px solid ${status ? statusBorder[status] : selectedNodeId === n.id ? "#0f172a" : "#cbd5e1"}`,
@@ -90,6 +90,7 @@ export function Graph({ def, statusByNodeId, onNodeClick, selectedNodeId }: Grap
   );
 }
 
-function nodeLabel(id: string, name: string | undefined, displayName: string): string {
-  return name ? `${name} (${id})` : `${displayName}\n${id}`;
+function nodeLabel(id: string, name: string | undefined, displayName: string, type: string): string {
+  if (name) return `${name}\n[${type}] ${id}`;
+  return `${displayName}\n[${type}] ${id}`;
 }

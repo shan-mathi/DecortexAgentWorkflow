@@ -29,12 +29,32 @@ function pickLlm(): LLMProvider {
   const kind = process.env.LLM_PROVIDER ?? "fake";
   switch (kind) {
     case "fake":
-      return new FakeLLM({ embeddingDim: 1536 });
+      return new FakeLLM({
+        embeddingDim: 1536,
+        defaultResponse: devDefaultResponse,
+      });
     default:
       throw new Error(
         `LLM_PROVIDER=${kind} not yet wired in the local entry. Use LLM_PROVIDER=fake.`,
       );
   }
+}
+
+function devDefaultResponse(prompt: string): string | undefined {
+  const lower = prompt.toLowerCase();
+  if (lower.includes("classify") && lower.includes("urgency")) {
+    if (lower.includes("down") || lower.includes("503") || lower.includes("outage") || lower.includes("critical") || lower.includes("lost") || lower.includes("losing")) {
+      return "HIGH";
+    }
+    if (lower.includes("slow") || lower.includes("intermittent") || lower.includes("lag") || lower.includes("delayed")) {
+      return "MED";
+    }
+    return "LOW";
+  }
+  if (lower.includes("draft") && (lower.includes("reply") || lower.includes("acknowledgement"))) {
+    return `Thank you for reaching out. We've received your ticket and are looking into the issue.\n\nBased on similar incidents we've resolved in the past, our team is already investigating. We'll provide an update within the next 2 hours.\n\nIf the situation is critical and you need immediate assistance, please don't hesitate to reach out to our on-call team.\n\nBest regards,\nSupport Team`;
+  }
+  return undefined;
 }
 
 async function main() {

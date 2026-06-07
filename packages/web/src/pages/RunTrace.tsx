@@ -63,6 +63,10 @@ export function RunTracePage() {
     ? trace.nodeExecutions.find((n) => n.nodeId === selected) ?? null
     : null;
 
+  const selectedDef = selected && def
+    ? def.nodes.find((n) => n.id === selected) ?? null
+    : null;
+
   return (
     <div>
       <div className="mb-4">
@@ -116,6 +120,12 @@ export function RunTracePage() {
           </h2>
           {selectedNode ? (
             <div className="space-y-3 text-sm">
+              {selectedDef && (
+                <>
+                  <Field label="type" value={selectedDef.type} mono />
+                  {selectedDef.name && <Field label="name" value={selectedDef.name} />}
+                </>
+              )}
               <Field label="status" value={selectedNode.status} mono />
               <Field label="durationMs" value={String(selectedNode.durationMs)} mono />
               <Field label="attemptCount" value={String(selectedNode.attemptCount)} mono />

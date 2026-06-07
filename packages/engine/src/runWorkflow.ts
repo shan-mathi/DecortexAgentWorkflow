@@ -105,7 +105,7 @@ export async function runWorkflow(
           runId,
           nodeId: n.id,
           runInput,
-          upstream: parentOutputs(workflowDef.edges, n.id, outputs),
+          upstream: allAncestorOutputs(workflowDef.edges, n.id, outputs),
           metadata: { workflowId, attempt: 0 },
         }),
       ),
@@ -179,22 +179,38 @@ function makeSkipped(nodeId: string, startedAt: Date): NodeExecution {
 }
 
 /**
- * Build `ctx.upstream` from immediate parents using the edge list.
+ * Build `ctx.upstream` from ALL ancestors that have completed so far.
  *
- * This is the function whose absence is the diamond-DAG bug the
- * integration suite catches: a level-local lookup would only see one
- * parent's result.
+ * This enables expressions like `nodes.classify.text` even when the
+ * branch node's immediate parent is `fetchSimilar` — the classify
+ * result is still reachable. All completed outputs keyed by node id.
+ *
+ * The diamond-DAG property is preserved: if a join node has two
+ * parents, both appear in the map.
  */
-function parentOutputs(
+function allAncestorOutputs(
   edges: EdgeDef[],
   nodeId: string,
   outputs: Record<string, NodeResult>,
 ): Record<string, NodeResult> {
-  const u: Record<string, NodeResult> = {};
+  // Walk backwards from `nodeId` through all transitive ancestors.
+  const ancestors = new Set<string>();
+  const stack: string[] = [];
   for (const e of edges) {
-    if (e.to !== nodeId) continue;
-    const r = outputs[e.from];
-    if (r) u[e.from] = r;
+    if (e.to === nodeId) stack.push(e.from);
+  }
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (ancestors.has(cur)) continue;
+    ancestors.add(cur);
+    for (const e of edges) {
+      if (e.to === cur) stack.push(e.from);
+    }
+  }
+  const u: Record<string, NodeResult> = {};
+  for (const id of ancestors) {
+    const r = outputs[id];
+    if (r) u[id] = r;
   }
   return u;
 }
