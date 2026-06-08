@@ -14,8 +14,14 @@ yarn-error.log*
 
 # env
 .env
-.env.*
-!.env.example
+.env.local
+.env.development
+!.env.sample
+!.env.production
+
+# CDK
+cdk.out
+cdk.context.json
 
 # editor / OS
 .DS_Store

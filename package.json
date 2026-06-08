@@ -1,28 +1,25 @@
 {
   "name": "agent-workflow-engine",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Agent workflow engine — DAG executor for typed nodes (LLM, HTTP, Branch, Transform, plugins).",
+  "description": "Distributed agent workflow engine: Backend API (Lambda) + Workflow Engine (Fargate) + UI (React).",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:integration": "vitest run packages/storage/test",
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "seed:tickets": "tsx scripts/seed-tickets.ts",
-    "seed:workflows": "tsx scripts/seed-workflows.ts",
-    "eval": "tsx scripts/eval.ts",
-    "load": "tsx scripts/load.ts",
-    "dev": "concurrently -n api,web -c blue,magenta \"pnpm --filter @workflow-engine/api dev\" \"pnpm --filter @workflow-engine/web dev\""
+    "dev": "concurrently -n engine,api,ui -c green,blue,magenta \"pnpm --filter @agent-engine/workflow-engine dev\" \"pnpm --filter @agent-engine/backend-api dev\" \"pnpm --filter @agent-engine/ui dev\"",
+    "dev:engine": "pnpm --filter @agent-engine/workflow-engine dev",
+    "dev:api": "pnpm --filter @agent-engine/backend-api dev",
+    "dev:ui": "pnpm --filter @agent-engine/ui dev"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/node": "^20.14.10",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",

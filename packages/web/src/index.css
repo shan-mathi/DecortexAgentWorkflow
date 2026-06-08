@@ -1,8 +1,0 @@
-/* React Flow's default CSS for nodes/edges/handles. We import it
- * here rather than per-component because every page that renders the
- * graph needs it. The @import must come before @tailwind. */
-@import "@xyflow/react/dist/style.css";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
