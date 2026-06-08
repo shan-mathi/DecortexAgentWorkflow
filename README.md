@@ -73,15 +73,37 @@ Opens http://localhost:5173 — the React app calls the deployed AWS backend dir
 
 ---
 
+## Tests
+
+```sh
+pnpm test          # run all tests (58 tests, <1s)
+pnpm test:watch    # watch mode
+pnpm typecheck     # typecheck all services
+```
+
+### Test coverage
+
+| Service | Tests | What's covered |
+|---------|-------|----------------|
+| workflow-engine | `tst/executor/dag.test.ts` | DAG validation (cycles, dangling edges, duplicates) + topological sort (linear, diamond, property test with 30 random DAGs) |
+| workflow-engine | `tst/executor/template.test.ts` | Template resolution: input paths, node paths, JSON stringify, arrays, whitespace, missing refs |
+| workflow-engine | `tst/executor/sandbox.test.ts` | Expression sandbox: arithmetic, ternary, member access, helpers, logical ops, deny list, parse errors |
+| workflow-engine | `tst/nodes/handlers.test.ts` | Branch (routing, default, no-match, hyphen alias), Transform (eval, input bindings, errors), LLM mock (classify HIGH/LOW, generic text, missing config, token usage) |
+| backend-api | `tst/api.test.ts` | All routes via Fastify inject against a mock engine: health, CRUD, validation (400), payload limit (413), proxy behaviour |
+
+---
+
 ## Available Commands
 
 | Command | Description |
 |---------|-------------|
+| `pnpm test` | Run all unit tests |
+| `pnpm test:watch` | Run tests in watch mode |
+| `pnpm typecheck` | Typecheck all services |
 | `pnpm dev:ui` | Run only the UI (points at deployed API) |
 | `pnpm dev` | Run all 3 services locally (requires local Postgres) |
 | `pnpm dev:engine` | Run only the Workflow Engine locally (port 4000) |
 | `pnpm dev:api` | Run only the Backend API locally (port 3000) |
-| `pnpm typecheck` | Typecheck all services |
 
 ---
 
