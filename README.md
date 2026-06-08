@@ -3,77 +3,162 @@
 A distributed agent workflow platform: define workflows as DAGs of typed nodes (LLM, HTTP, Branch, Transform), execute them with full tracing, and visualize results.
 
 See [DESIGN.md](./DESIGN.md) for architecture, schema, API spec, and design decisions.
+See [TESTING.md](./TESTING.md) for test strategy, C1/C2/C3 stance, and coverage details.
 
 ---
 
-## Getting Started — Run UI Against Deployed Infrastructure
+## 1. Local Development Setup
 
-The workflow engine is deployed on AWS (Fargate + Lambda + RDS). You only need to run the React UI locally to interact with it.
+Run the entire system locally — all 3 services + Postgres. Uses a mock LLM (no AWS credentials needed).
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 9+
+- **Node.js 20+** — `node --version`
+- **pnpm 9+** — `npm install -g pnpm`
+- **PostgreSQL 17** with **pgvector** extension
+
+### Step 1: Install PostgreSQL + pgvector (macOS)
+
+```sh
+brew install postgresql@17 pgvector
+brew services start postgresql@17
+
+# Add pg binaries to PATH
+export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
+# (Add this line to ~/.zshrc to persist)
+```
+
+### Step 2: Setup the database
+
+```sh
+# Create postgres role (skip if already exists)
+createuser -s postgres 2>/dev/null
+
+# Set password
+psql -U postgres -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+
+# Enable pgvector extension
+psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+# Run migrations (creates all tables + seeds node types)
+psql -U postgres -f services/workflow-engine/migrations/0001_init.sql
+```
+
+### Step 3: Install dependencies
+
+```sh
+pnpm install
+```
+
+### Step 4: Configure UI for local development
+
+Ensure `services/ui/.env.development` has the `VITE_API_URL` line **commented out**:
+
+```env
+# Comment this out for local dev (Vite proxy handles routing to localhost:3000)
+# VITE_API_URL=https://fkvacbn6i8.execute-api.ap-south-1.amazonaws.com
+```
+
+When `VITE_API_URL` is unset, the UI uses the Vite dev proxy which routes `/api/*` to `localhost:3000` (the local Backend API).
+
+### Step 5: Kill any existing processes on required ports
+
+```sh
+# Free up ports 3000, 4000, 5173 if occupied from a previous run
+lsof -ti:3000 | xargs kill 2>/dev/null
+lsof -ti:4000 | xargs kill 2>/dev/null
+lsof -ti:5173 | xargs kill 2>/dev/null
+```
+
+### Step 6: Start all services
+
+```sh
+pnpm dev
+```
+
+This starts concurrently:
+| Service | Port | LLM Mode |
+|---------|------|----------|
+| Workflow Engine | http://localhost:4000 | Mock (`LLM_PROVIDER=fake` by default) |
+| Backend API | http://localhost:3000 | Proxies to Engine |
+| UI | http://localhost:5173 | Vite proxy → Backend API |
+
+### Step 7: Seed sample data
+
+In a separate terminal:
+
+```sh
+API_URL=http://localhost:3000 ./infra/scripts/seed-deployed.sh
+```
+
+This registers 4 nodes (classify-ticket, branch-urgency, draft-urgent, draft-low) and creates the `ops-ticket-router` workflow.
+
+### Step 8: Verify
+
+```sh
+# Health check
+curl http://localhost:3000/api/health
+# → {"status":"ok","engine":"connected"}
+
+# List workflows
+curl http://localhost:3000/api/workflows
+# → [{"id":"...","name":"ops-ticket-router","version":1}]
+```
+
+Open http://localhost:5173 in your browser.
+
+### Mock LLM behaviour
+
+When running locally, `LLM_PROVIDER` defaults to `fake`. The mock LLM:
+- Returns `"HIGH"` for prompts with outage/503/down/critical keywords
+- Returns `"MED"` for slow/intermittent/lag keywords
+- Returns `"LOW"` for everything else
+- Returns a generic acknowledgement for non-classification prompts
+
+This lets the full workflow execute end-to-end without AWS credentials or Bedrock access.
+
+---
+
+## 2. Run UI Against Deployed Infrastructure
+
+If infrastructure is already deployed on AWS, you only need to run the UI locally.
+
+### Prerequisites
+
+- Node.js 20+, pnpm 9+
 
 ### Setup
 
 ```sh
-# 1. Clone and install dependencies
-git clone <repo-url> && cd dcortex
 pnpm install
-
-# 2. Verify the API is reachable
-curl https://fkvacbn6i8.execute-api.ap-south-1.amazonaws.com/api/health
-# → {"status":"ok","engine":"connected"}
 ```
 
 ### Configure UI to point at deployed API
 
-The file `services/ui/.env.development` should contain:
+Edit `services/ui/.env.development`:
 
 ```env
 VITE_API_URL=https://fkvacbn6i8.execute-api.ap-south-1.amazonaws.com
 ```
 
-This is already set. If you're using a different deployment, update this URL to your API Gateway endpoint.
-
-### Run the UI
+### Run
 
 ```sh
 pnpm dev:ui
 ```
 
-Opens http://localhost:5173 — the React app calls the deployed AWS backend directly.
+Opens http://localhost:5173 — calls the deployed AWS backend directly (no local Postgres or Engine needed).
 
-### What you can do
+### Verify the API is reachable
 
-| Page | Description |
-|------|-------------|
-| **Workflows** | List, create, delete workflows |
-| **Workflow Detail** | View DAG graph, click nodes to inspect/edit config, save changes, trigger execution |
-| **Nodes** | View node types (LLM/HTTP/Branch/Transform), register new nodes, view config, delete |
-| **Execute** | Trigger a workflow with JSON input |
-| **Executions** | List all runs with status, duration |
-| **Execution Trace** | Per-node detail: status, type, duration, token usage, input/output, errors |
-
-### Example: Trigger an execution
-
-1. Open http://localhost:5173
-2. Go to **Workflows** → click a workflow (e.g. `ops-ticket-router`)
-3. Click **Execute**
-4. Enter input:
-   ```json
-   {
-     "subject": "Production API returning 503 errors",
-     "description": "All requests failing in us-east-1 since the 14:00 deploy. ALB shows 0 healthy targets."
-   }
-   ```
-5. Click **Run**
-6. View the execution trace — each node shows status, output, duration, and token usage
+```sh
+curl https://fkvacbn6i8.execute-api.ap-south-1.amazonaws.com/api/health
+# → {"status":"ok","engine":"connected"}
+```
 
 ---
 
-## Tests
+## 3. Tests
 
 ```sh
 pnpm test          # run all tests (58 tests, <1s)
@@ -93,23 +178,23 @@ pnpm typecheck     # typecheck all services
 
 ---
 
-## Available Commands
+## 4. Available Commands
 
 | Command | Description |
 |---------|-------------|
 | `pnpm test` | Run all unit tests |
 | `pnpm test:watch` | Run tests in watch mode |
 | `pnpm typecheck` | Typecheck all services |
-| `pnpm dev:ui` | Run only the UI (points at deployed API) |
 | `pnpm dev` | Run all 3 services locally (requires local Postgres) |
-| `pnpm dev:engine` | Run only the Workflow Engine locally (port 4000) |
-| `pnpm dev:api` | Run only the Backend API locally (port 3000) |
+| `pnpm dev:ui` | Run only the UI |
+| `pnpm dev:engine` | Run only the Workflow Engine (port 4000) |
+| `pnpm dev:api` | Run only the Backend API (port 3000) |
 
 ---
 
-## (Optional) Deploy to Your Own AWS Account
+## 5. (Optional) Deploy to Your Own AWS Account
 
-If you want to deploy the full stack to your own AWS account.
+Deploy the full stack to your own AWS account.
 
 ### Prerequisites
 
@@ -143,7 +228,7 @@ aws sts get-caller-identity   # verify
 cp infra/.env.sample infra/.env
 ```
 
-Edit `infra/.env` with your values:
+Edit `infra/.env`:
 
 ```env
 AWS_ACCOUNT_ID=<your-account-id>
@@ -175,21 +260,19 @@ cd infra
 npx cdk deploy
 ```
 
-This creates: VPC, RDS Postgres, ECS Fargate (Workflow Engine), Lambda (Backend API), API Gateway.
-
 Note the output:
 ```
 AgentEngine.ApiUrl = https://<id>.execute-api.<region>.amazonaws.com
 ```
 
-### 7. Add the API URL to your env files
+### 7. Configure environment with the deployed URL
 
 ```sh
 # Add to infra/.env (for seed script)
-echo "API_URL=https://<id>.execute-api.<region>.amazonaws.com" >> infra/.env
+# API_URL=https://<id>.execute-api.<region>.amazonaws.com
 
-# Add to UI (for local development against your deployment)
-echo "VITE_API_URL=https://<id>.execute-api.<region>.amazonaws.com" > services/ui/.env.development
+# Add to UI .env.development (to use deployed API from local UI)
+# VITE_API_URL=https://<id>.execute-api.<region>.amazonaws.com
 ```
 
 ### 8. Seed the database
@@ -237,11 +320,22 @@ npx cdk destroy
 agent-workflow-engine/
 ├── services/
 │   ├── workflow-engine/       Fargate: DAG executor + workflow CRUD + Postgres
-│   ├── backend-api/           Lambda: thin validation proxy to Engine
+│   │   ├── src/db/           DB repositories
+│   │   ├── src/executor/     DAG validation, topo sort, run orchestrator
+│   │   ├── src/nodes/        Node handlers (LLM/HTTP/Branch/Transform)
+│   │   ├── src/types/        Shared type interfaces
+│   │   ├── src/workflow/     Service layer
+│   │   ├── tst/              Unit tests
+│   │   └── migrations/       SQL schema
+│   ├── backend-api/           Lambda: validation proxy to Engine
+│   │   ├── src/routes/       Route handlers
+│   │   └── tst/              Unit tests
 │   └── ui/                    React: workflow builder + execution viewer
+│       └── src/pages/        Page components
 ├── infra/                     CDK: VPC + RDS + Fargate + Lambda + API Gateway
-│   ├── lib/agent-engine-stack.ts
-│   └── scripts/               build-and-push.sh, seed-deployed.sh
+│   ├── lib/                  Stack definition
+│   └── scripts/              build-and-push.sh, seed-deployed.sh
 ├── DESIGN.md                  Architecture documentation
+├── TESTING.md                 Test strategy (C1/C2/C3)
 └── README.md                  This file
 ```

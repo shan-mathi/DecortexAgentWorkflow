@@ -5,7 +5,7 @@ import { api } from "../api.js";
 export function ExecutePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [input, setInput] = useState(JSON.stringify({ subject: "API down", body: "503 errors everywhere." }, null, 2));
+  const [input, setInput] = useState(JSON.stringify({ subject: "API down", description: "503 errors everywhere." }, null, 2));
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
