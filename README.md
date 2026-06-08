@@ -8,6 +8,8 @@ See [TESTING.md](./TESTING.md) for test strategy, C1/C2/C3 stance, and coverage 
 
 see [UI walk through](https://drive.google.com/file/d/11B0ErWhoK8EX11x6dK6K5HQxjTTbw1MO/view?usp=sharing).
 
+see [code walk through](https://drive.google.com/file/d/1Q6nrqropQfjDJ-Q-OlJ_nTwadgSuLDVP/view?usp=sharing).
+
 ---
 
 ## 1. Local Development Setup
