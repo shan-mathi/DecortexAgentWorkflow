@@ -68,64 +68,8 @@ The primary goals are:
 
 ## 4. High Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Client Layer                                                           │
-│                                                                         │
-│  ┌──────────┐                                                           │
-│  │    UI    │  React + Vite + Tailwind                                  │
-│  │ (local)  │  Calls /api/* endpoints                                   │
-│  └────┬─────┘                                                           │
-│       │                                                                 │
-├───────┼─────────────────────────────────────────────────────────────────┤
-│  API Layer                                                              │
-│       │                                                                 │
-│       ▼                                                                 │
-│  ┌──────────────────┐                                                   │
-│  │   API Gateway    │  HTTP API, CORS, /{proxy+}                        │
-│  │   (public)       │                                                   │
-│  └────────┬─────────┘                                                   │
-│           │                                                             │
-│           ▼                                                             │
-│  ┌──────────────────┐                                                   │
-│  │  Backend API     │  Lambda (Node 20, ARM64, 256MB)                   │
-│  │  (Fastify)       │  Validates requests, forwards to Engine           │
-│  └────────┬─────────┘                                                   │
-│           │                                                             │
-├───────────┼─────────────────────────────────────────────────────────────┤
-│  Engine Layer (Private Subnet)                                          │
-│           │ HTTP (internal ALB, port 80)                                │
-│           ▼                                                             │
-│  ┌──────────────────────────────────────────────────────────────┐       │
-│  │              Workflow Engine (Fargate)                        │       │
-│  │                                                              │       │
-│  │  ┌────────────────┐  ┌─────────────────┐  ┌──────────────┐  │       │
-│  │  │ Workflow Svc   │  │  Executor Svc   │  │ Node Handlers│  │       │
-│  │  │                │  │                 │  │              │  │       │
-│  │  │ - Node Types   │  │ - validateDag   │  │ - LLM        │  │       │
-│  │  │ - Nodes CRUD   │  │ - topoLevels   │  │ - HTTP       │  │       │
-│  │  │ - Workflows    │  │ - runWorkflow   │  │ - Branch     │  │       │
-│  │  │                │  │ - retries       │  │ - Transform  │  │       │
-│  │  └───────┬────────┘  └────────┬────────┘  └──────┬───────┘  │       │
-│  │          │                    │                   │          │       │
-│  │          ▼                    ▼                   ▼          │       │
-│  │  ┌─────────────────────────────────────────────────────┐    │       │
-│  │  │              DB Repositories                         │    │       │
-│  │  │  (WorkflowRepo, NodeRegRepo, RunRepo, NodeTypeRepo) │    │       │
-│  │  └─────────────────────────┬───────────────────────────┘    │       │
-│  │                            │                                 │       │
-│  └────────────────────────────┼─────────────────────────────────┘       │
-│                               │                                         │
-├───────────────────────────────┼─────────────────────────────────────────┤
-│  Data Layer (Isolated Subnet) │                                         │
-│                               ▼                                         │
-│  ┌──────────────────┐    ┌──────────────┐                               │
-│  │   RDS Postgres   │    │  AWS Bedrock │                               │
-│  │   (pgvector)     │    │  (Nova Micro)│                               │
-│  └──────────────────┘    └──────────────┘                               │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+![Architecture diagram](agent-workflow-engine-hld.svg)
+
 
 ---
 
@@ -133,60 +77,57 @@ The primary goals are:
 
 ### 5.1 Workflow Execution (happy path)
 
+
+```mermaid
+sequenceDiagram
+    title 5.1 Workflow Execution (Happy Path)
+
+    participant User
+    participant UI
+    participant API as Backend API (Lambda)
+    participant Engine as Workflow Engine (Fargate)
+    participant DB as Postgres
+    participant Bedrock
+
+    User->>UI: Trigger Run
+    UI->>API: POST /api/executions
+    API->>Engine: POST /executions
+    Engine->>DB: INSERT runs(PENDING)
+    Note over Engine: validateDag()
+    Note over Engine: topoLevels()
+    Engine->>DB: UPDATE status=RUNNING
+
+    rect rgb(240, 248, 255)
+        Note over Engine: ─── Level 0 ───
+        Note over Engine: classify-ticket / resolve template
+        Engine->>Bedrock: LLM call
+        Bedrock-->>Engine: response
+        Engine->>DB: INSERT node_execution
+    end
+
+    rect rgb(245, 255, 245)
+        Note over Engine: ─── Level 1 ───
+        Note over Engine: branch-urgency / eval expression
+        Note over Engine: markNonTakenSubtree
+        Engine->>DB: INSERT node_execution
+    end
+
+    rect rgb(255, 248, 240)
+        Note over Engine: ─── Level 2 ───
+        Note over Engine: draft-urgent (taken)
+        Engine->>Bedrock: LLM call
+        Bedrock-->>Engine: response
+        Engine->>DB: INSERT node_execution
+        Note over Engine: draft-low (SKIPPED)
+        Engine->>DB: INSERT node_execution
+    end
+
+    Engine->>DB: UPDATE status=SUCCEEDED
+    Engine-->>API: {runId, status}
+    API-->>UI: 202 {runId}
+    UI-->>User: Show trace
 ```
-User            UI              Backend API         Workflow Engine           Postgres       Bedrock
- │               │               (Lambda)            (Fargate)                  │              │
- │  Trigger Run  │                  │                    │                      │              │
- │──────────────▶│                  │                    │                      │              │
- │               │  POST /api/executions                 │                      │              │
- │               │─────────────────▶│                    │                      │              │
- │               │                  │  POST /executions  │                      │              │
- │               │                  │───────────────────▶│                      │              │
- │               │                  │                    │  INSERT runs(PENDING)│              │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │                      │              │
- │               │                  │                    │  validateDag()       │              │
- │               │                  │                    │  topoLevels()        │              │
- │               │                  │                    │                      │              │
- │               │                  │                    │  UPDATE status=RUNNING              │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │                      │              │
- │               │                  │                    │  ─── Level 0 ───     │              │
- │               │                  │                    │  classify-ticket     │              │
- │               │                  │                    │  resolve template    │              │
- │               │                  │                    │─────────────────────────────────────▶│
- │               │                  │                    │                      │   LLM call   │
- │               │                  │                    │◀─────────────────────────────────────│
- │               │                  │                    │  INSERT node_execution│             │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │                      │              │
- │               │                  │                    │  ─── Level 1 ───     │              │
- │               │                  │                    │  branch-urgency      │              │
- │               │                  │                    │  eval expression     │              │
- │               │                  │                    │  markNonTakenSubtree │              │
- │               │                  │                    │  INSERT node_execution│             │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │                      │              │
- │               │                  │                    │  ─── Level 2 ───     │              │
- │               │                  │                    │  draft-urgent (taken)│              │
- │               │                  │                    │─────────────────────────────────────▶│
- │               │                  │                    │◀─────────────────────────────────────│
- │               │                  │                    │  INSERT node_execution│             │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │  draft-low (SKIPPED) │              │
- │               │                  │                    │  INSERT node_execution│             │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │                      │              │
- │               │                  │                    │  UPDATE status=SUCCEEDED            │
- │               │                  │                    │─────────────────────▶│              │
- │               │                  │                    │                      │              │
- │               │                  │  {runId, status}   │                      │              │
- │               │                  │◀───────────────────│                      │              │
- │               │  202 {runId}     │                    │                      │              │
- │               │◀─────────────────│                    │                      │              │
- │  Show trace   │                  │                    │                      │              │
- │◀──────────────│                  │                    │                      │              │
-```
+
 
 ### 5.2 Node Registration
 
@@ -196,15 +137,30 @@ User → UI → Backend API (validates Zod) → Engine /nodes (POST) → DB INSE
 
 ### 5.3 Workflow Creation
 
-```
-User → UI → Backend API (validates Zod + edges/nodes structure)
-         → Engine /workflows (POST)
-           → BEGIN TRANSACTION
-             → INSERT workflows
-             → INSERT workflow_nodes (one per node)
-             → INSERT workflow_edges (one per edge)
-           → COMMIT
-         → 201 {id, name, version}
+
+```mermaid
+sequenceDiagram
+    title 5.3 Workflow Creation
+
+    participant User
+    participant UI
+    participant API as Backend API
+    participant Engine as Workflow Engine
+    participant DB as Postgres
+
+    User->>UI: Create workflow
+    UI->>API: POST /api/workflows
+    Note over API: validates Zod + edges/nodes structure
+    API->>Engine: POST /workflows
+    Engine->>DB: BEGIN TRANSACTION
+    Engine->>DB: INSERT workflows
+    Engine->>DB: INSERT workflow_nodes (one per node)
+    Engine->>DB: INSERT workflow_edges (one per edge)
+    Engine->>DB: COMMIT
+    DB-->>Engine: ok
+    Engine-->>API: 201 {id, name, version}
+    API-->>UI: 201 {id, name, version}
+    UI-->>User: Workflow created
 ```
 
 ---
@@ -213,48 +169,83 @@ User → UI → Backend API (validates Zod + edges/nodes structure)
 
 ### Entity Relationship
 
+```mermaid
+erDiagram
+    node_types {
+        uuid id PK
+        string name UK
+        string category
+        jsonb config_schema
+        int version
+    }
+
+    registered_nodes {
+        uuid id PK
+        string name
+        uuid node_type_id FK
+        string category
+        jsonb config
+        int version
+    }
+
+    workflows {
+        uuid id PK
+        string name
+        string description
+        int version
+    }
+
+    workflow_nodes {
+        uuid id PK
+        uuid workflow_id FK
+        string node_id
+        uuid reg_node_id FK
+        jsonb config_ovr
+        int position_x
+        int position_y
+    }
+
+    workflow_edges {
+        uuid id PK
+        uuid workflow_id FK
+        string from_node
+        string to_node
+        string condition_expr
+    }
+
+    runs {
+        uuid run_id PK
+        uuid workflow_id FK
+        string status
+        jsonb input
+        timestamp started_at
+        timestamp ended_at
+    }
+
+    node_executions {
+        uuid run_id PK
+        string node_id PK
+        uuid registered_node_id
+        string node_name
+        string node_type
+        jsonb input
+        jsonb output
+        string status
+        int duration_ms
+        jsonb error
+        int attempt_count
+        timestamp started_at
+        jsonb token_usage
+    }
+
+    node_types ||--o{ registered_nodes : "has"
+    registered_nodes ||--o{ workflow_nodes : "used in"
+    workflows ||--o{ workflow_nodes : "contains"
+    workflows ||--o{ workflow_edges : "contains"
+    workflows ||--o{ runs : "executed as"
+    runs ||--o{ node_executions : "produces"
 ```
-┌──────────────┐       ┌───────────────────┐       ┌──────────────┐
-│  node_types  │◀──────│  registered_nodes │◀──────│workflow_nodes │
-│              │  1:N   │                   │  1:N   │              │
-│  id (PK)     │       │  id (PK)          │       │  id (PK)     │
-│  name (UQ)   │       │  name             │       │  workflow_id  │──┐
-│  category    │       │  node_type_id (FK)│       │  node_id     │  │
-│  config_schema│      │  category         │       │  reg_node_id │  │
-│  version     │       │  config           │       │  config_ovr  │  │
-└──────────────┘       │  version          │       │  position_x/y│  │
-                       │  (name,ver) UQ    │       └──────────────┘  │
-                       └───────────────────┘                         │
-                                                                     │
-┌──────────────┐       ┌───────────────────┐       ┌──────────────┐  │
-│  workflows   │◀──────│  workflow_edges   │       │     runs     │  │
-│              │  1:N   │                   │       │              │  │
-│  id (PK)     │◀──────│  id (PK)          │       │  run_id (PK) │  │
-│  name        │  │    │  workflow_id (FK) │       │  workflow_id │──┘
-│  description │  │    │  from_node       │       │  status      │
-│  version     │  │    │  to_node         │       │  input       │
-└──────────────┘  │    │  condition_expr  │       │  started_at  │
-                  │    └───────────────────┘       │  ended_at    │
-                  │                                └──────┬───────┘
-                  │                                       │ 1:N
-                  │                                       ▼
-                  │                                ┌──────────────────┐
-                  └────────────────────────────────│ node_executions  │
-                                                   │                  │
-                                                   │  (run_id, node_id) PK
-                                                   │  registered_node_id
-                                                   │  node_name
-                                                   │  node_type
-                                                   │  input (JSONB)
-                                                   │  output (JSONB)
-                                                   │  status
-                                                   │  duration_ms
-                                                   │  error (JSONB)
-                                                   │  attempt_count
-                                                   │  started_at
-                                                   │  token_usage (JSONB)
-                                                   └──────────────────┘
-```
+
 
 ### Key Constraints
 
