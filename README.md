@@ -3,8 +3,11 @@
 A distributed agent workflow platform: define workflows as DAGs of typed nodes (LLM, HTTP, Branch, Transform), execute them with full tracing, and visualize results.
 
 See [DESIGN.md](./DESIGN.md) for architecture, schema, API spec, and design decisions.
+
 See [TESTING.md](./TESTING.md) for test strategy, C1/C2/C3 stance, and coverage details.
-see [UI walk through](https://drive.google.com/file/d/11B0ErWhoK8EX11x6dK6K5HQxjTTbw1MO/view?usp=sharing)
+
+see [UI walk through](https://drive.google.com/file/d/11B0ErWhoK8EX11x6dK6K5HQxjTTbw1MO/view?usp=sharing).
+
 ---
 
 ## 1. Local Development Setup
