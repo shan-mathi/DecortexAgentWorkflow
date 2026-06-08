@@ -6,260 +6,62 @@ See [DESIGN.md](./DESIGN.md) for architecture, schema, API spec, and design deci
 
 ---
 
-## 1. Local Development Setup
+## Getting Started — Run UI Against Deployed Infrastructure
 
-Run all 3 services locally with a mock LLM (no AWS credentials required).
+The workflow engine is deployed on AWS (Fargate + Lambda + RDS). You only need to run the React UI locally to interact with it.
 
 ### Prerequisites
 
 - Node.js 20+
 - pnpm 9+
-- PostgreSQL 16/17 with pgvector extension
-
-### Install PostgreSQL + pgvector (macOS)
-
-```sh
-# Install Postgres 17
-brew install postgresql@17
-brew services start postgresql@17
-
-# Add to PATH
-export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
-# (Add this to ~/.zshrc to persist)
-
-# Install pgvector
-brew install pgvector
-
-# Create the postgres user (if not exists)
-createuser -s postgres 2>/dev/null
-psql -U postgres -c "ALTER USER postgres WITH PASSWORD 'postgres';"
-
-# Enable pgvector extension
-psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
-```
-
-### Install dependencies
-
-```sh
-pnpm install
-```
-
-### Run database migrations
-
-```sh
-psql -U postgres -f services/workflow-engine/migrations/0001_init.sql
-```
-
-This creates all tables (`node_types`, `registered_nodes`, `workflows`, `workflow_nodes`, `workflow_edges`, `runs`, `node_executions`) and seeds the 4 base node types (LLM, HTTP, Branch, Transform).
-
-### Start all services
-
-```sh
-pnpm dev
-```
-
-This starts concurrently:
-- **Workflow Engine** on `http://localhost:4000` (LLM_PROVIDER defaults to `fake`)
-- **Backend API** on `http://localhost:3000` (proxies to Engine)
-- **UI** on `http://localhost:5173` (Vite proxy → Backend API)
-
-### Verify
-
-```sh
-# Health check (Engine)
-curl http://localhost:4000/health
-# → {"status":"ok"}
-
-# Health check (Backend API → Engine)
-curl http://localhost:3000/api/health
-# → {"status":"ok","engine":"connected"}
-
-# List node types
-curl http://localhost:3000/api/node-types
-# → [{"id":"...","name":"LLM","category":"llm",...}, ...]
-```
-
-Open http://localhost:5173 in your browser.
-
-### Seed sample workflow (optional)
-
-Register nodes and create the ops-ticket-router workflow locally:
-
-```sh
-# Register a classify node
-curl -X POST http://localhost:3000/api/nodes \
-  -H 'content-type: application/json' \
-  -d '{"name":"classify-ticket","nodeTypeId":"10000000-0000-4000-8000-000000000001","category":"llm","config":{"promptTemplate":"Classify urgency as LOW, MED, or HIGH. Reply with only the label. Subject: {{input.subject}} Description: {{input.description}}"}}'
-```
-
-Or use the UI: go to **Nodes** → **Register Node** → pick LLM type → fill config.
-
-### Mock LLM behaviour
-
-When `LLM_PROVIDER=fake` (the default for local dev), the LLM handler returns:
-- `"HIGH"` / `"MED"` / `"LOW"` for prompts containing "reply with only the label"
-- A generic acknowledgement for any other prompt
-
-This allows the full workflow to execute without AWS credentials or Bedrock access.
-
----
-
-## 2. Deploy to AWS
-
-Deploy the full stack: VPC + RDS Postgres + ECS Fargate (Workflow Engine) + Lambda + API Gateway (Backend API).
-
-### Prerequisites
-
-- Docker (via Colima or Docker Desktop)
-- AWS CLI v2 configured
-- Node.js 20+, pnpm 9+
-
-### Install Docker via Colima (macOS)
-
-```sh
-brew install colima docker
-
-# Start Colima (Docker runtime)
-colima start --arch aarch64 --cpu 4 --memory 8
-
-# Verify
-docker --version
-docker info
-```
-
-### Configure AWS CLI
-
-```sh
-aws configure
-# AWS Access Key ID: <your-key>
-# AWS Secret Access Key: <your-secret>
-# Default region name: ap-south-1
-# Default output format: json
-
-# Verify
-aws sts get-caller-identity
-# → {"Account": "141132233781", ...}
-```
-
-### Bootstrap CDK (first time only)
-
-```sh
-cd infra
-npx cdk bootstrap aws://141132233781/ap-south-1
-```
-
-### Create ECR repository and push Docker image
-
-```sh
-# From repo root
-./infra/scripts/build-and-push.sh
-```
-
-This script:
-1. Creates the ECR repo `agent-engine/workflow-engine` (if not exists)
-2. Logs into ECR
-3. Builds the Docker image from `services/workflow-engine/Dockerfile`
-4. Pushes to `141132233781.dkr.ecr.ap-south-1.amazonaws.com/agent-engine/workflow-engine:latest`
-
-### Deploy the CDK stack
-
-```sh
-cd infra
-npx cdk deploy
-```
-
-Deploys:
-- VPC (2 AZs, NAT gateway, public/private/isolated subnets)
-- RDS Postgres 16.14 (t4g.micro, encrypted, isolated subnet)
-- ECS Fargate (Workflow Engine, ARM64, auto-scales 1→4)
-- Internal ALB (Engine access within VPC)
-- Lambda (Backend API, ARM64, 256MB, ESM bundled)
-- API Gateway HTTP API (public, CORS enabled)
-
-**Outputs** (note these after deploy):
-```
-AgentEngine.ApiUrl = https://<id>.execute-api.ap-south-1.amazonaws.com
-AgentEngine.EngineUrl = http://internal-<alb-dns>.ap-south-1.elb.amazonaws.com
-AgentEngine.DbEndpoint = <rds-endpoint>.ap-south-1.rds.amazonaws.com
-AgentEngine.DbSecretArn = arn:aws:secretsmanager:ap-south-1:141132233781:secret:agent-engine/db-credentials-<suffix>
-```
-
-### Seed the deployed database
-
-After deployment, the Fargate task auto-runs migrations on startup. Seed the demo workflow:
-
-```sh
-./infra/scripts/seed-deployed.sh
-```
-
-### Verify deployed API
-
-```sh
-curl https://<your-api-id>.execute-api.ap-south-1.amazonaws.com/api/health
-# → {"status":"ok","engine":"connected"}
-
-curl https://<your-api-id>.execute-api.ap-south-1.amazonaws.com/api/node-types
-# → [{...LLM...}, {...HTTP...}, {...Branch...}, {...Transform...}]
-```
-
-### Update Fargate (after code changes)
-
-```sh
-# Rebuild + push image
-./infra/scripts/build-and-push.sh
-
-# Force ECS to pull new image
-aws ecs update-service \
-  --cluster $(aws ecs list-clusters --region ap-south-1 --query 'clusterArns[0]' --output text) \
-  --service $(aws ecs list-services --cluster $(aws ecs list-clusters --region ap-south-1 --query 'clusterArns[0]' --output text) --region ap-south-1 --query 'serviceArns[0]' --output text) \
-  --force-new-deployment \
-  --region ap-south-1
-```
-
-### Update Lambda (after code changes)
-
-```sh
-cd infra
-npx cdk deploy
-# CDK auto-bundles the Lambda from services/backend-api/src/lambda.ts
-```
-
----
-
-## 3. Use Deployed Infrastructure via Local UI
-
-Run the React UI locally but point it at the already-deployed AWS backend. No need to run Engine or Backend API locally.
 
 ### Setup
 
-Edit `services/ui/.env.development`:
+```sh
+# 1. Clone and install dependencies
+git clone <repo-url> && cd dcortex
+pnpm install
+
+# 2. Verify the API is reachable
+curl https://fkvacbn6i8.execute-api.ap-south-1.amazonaws.com/api/health
+# → {"status":"ok","engine":"connected"}
+```
+
+### Configure UI to point at deployed API
+
+The file `services/ui/.env.development` should contain:
 
 ```env
 VITE_API_URL=https://fkvacbn6i8.execute-api.ap-south-1.amazonaws.com
 ```
 
-### Run
+This is already set. If you're using a different deployment, update this URL to your API Gateway endpoint.
+
+### Run the UI
 
 ```sh
 pnpm dev:ui
 ```
 
-This starts only the UI on http://localhost:5173, calling the deployed API Gateway directly.
+Opens http://localhost:5173 — the React app calls the deployed AWS backend directly.
 
 ### What you can do
 
-- **Nodes page**: view node types, register new nodes, delete nodes
-- **Workflows page**: list workflows, create new ones, delete
-- **Workflow detail**: view the DAG graph, click nodes to inspect config, edit config overrides, save
-- **Execute**: trigger a workflow with JSON input
-- **Execution trace**: view per-node status, duration, token usage, input/output, errors
+| Page | Description |
+|------|-------------|
+| **Workflows** | List, create, delete workflows |
+| **Workflow Detail** | View DAG graph, click nodes to inspect/edit config, save changes, trigger execution |
+| **Nodes** | View node types (LLM/HTTP/Branch/Transform), register new nodes, view config, delete |
+| **Execute** | Trigger a workflow with JSON input |
+| **Executions** | List all runs with status, duration |
+| **Execution Trace** | Per-node detail: status, type, duration, token usage, input/output, errors |
 
-### Example: trigger an execution
+### Example: Trigger an execution
 
 1. Open http://localhost:5173
-2. Go to **Workflows** → click **ops-ticket-router**
+2. Go to **Workflows** → click a workflow (e.g. `ops-ticket-router`)
 3. Click **Execute**
-4. Enter:
+4. Enter input:
    ```json
    {
      "subject": "Production API returning 503 errors",
@@ -267,19 +69,157 @@ This starts only the UI on http://localhost:5173, calling the deployed API Gatew
    }
    ```
 5. Click **Run**
-6. Watch the execution trace — each node shows status, output, duration, and token usage
+6. View the execution trace — each node shows status, output, duration, and token usage
 
 ---
 
-## Quick Reference
+## Available Commands
 
-| Command | What it does |
+| Command | Description |
 |---------|-------------|
-| `pnpm dev` | Start all 3 services locally |
-| `pnpm dev:engine` | Start only Workflow Engine (port 4000) |
-| `pnpm dev:api` | Start only Backend API (port 3000) |
-| `pnpm dev:ui` | Start only UI (port 5173) |
-| `pnpm typecheck` | Typecheck all packages |
-| `cd infra && npx cdk deploy` | Deploy to AWS |
-| `./infra/scripts/build-and-push.sh` | Build + push Docker image to ECR |
-| `./infra/scripts/seed-deployed.sh` | Seed the deployed DB with demo workflow |
+| `pnpm dev:ui` | Run only the UI (points at deployed API) |
+| `pnpm dev` | Run all 3 services locally (requires local Postgres) |
+| `pnpm dev:engine` | Run only the Workflow Engine locally (port 4000) |
+| `pnpm dev:api` | Run only the Backend API locally (port 3000) |
+| `pnpm typecheck` | Typecheck all services |
+
+---
+
+## (Optional) Deploy to Your Own AWS Account
+
+If you want to deploy the full stack to your own AWS account.
+
+### Prerequisites
+
+- Docker (via [Colima](https://github.com/abiosoft/colima) or Docker Desktop)
+- AWS CLI v2 with credentials configured
+- Node.js 20+, pnpm 9+
+
+### 1. Install Docker via Colima (macOS)
+
+```sh
+brew install colima docker
+colima start --arch aarch64 --cpu 4 --memory 8
+docker --version   # verify
+```
+
+### 2. Configure AWS CLI
+
+```sh
+aws configure
+# AWS Access Key ID: <your-key>
+# AWS Secret Access Key: <your-secret>
+# Default region name: <your-region>
+# Default output format: json
+
+aws sts get-caller-identity   # verify
+```
+
+### 3. Create your environment file
+
+```sh
+cp infra/.env.sample infra/.env
+```
+
+Edit `infra/.env` with your values:
+
+```env
+AWS_ACCOUNT_ID=<your-account-id>
+AWS_REGION=<your-region>
+CDK_DEFAULT_ACCOUNT=<your-account-id>
+CDK_DEFAULT_REGION=<your-region>
+ENGINE_IMAGE_URI=<account>.dkr.ecr.<region>.amazonaws.com/agent-engine/workflow-engine:latest
+LLM_PROVIDER=bedrock
+LOG_LEVEL=info
+```
+
+### 4. Bootstrap CDK (first time only)
+
+```sh
+cd infra
+npx cdk bootstrap aws://<your-account-id>/<your-region>
+```
+
+### 5. Build and push Docker image
+
+```sh
+./infra/scripts/build-and-push.sh
+```
+
+### 6. Deploy the stack
+
+```sh
+cd infra
+npx cdk deploy
+```
+
+This creates: VPC, RDS Postgres, ECS Fargate (Workflow Engine), Lambda (Backend API), API Gateway.
+
+Note the output:
+```
+AgentEngine.ApiUrl = https://<id>.execute-api.<region>.amazonaws.com
+```
+
+### 7. Add the API URL to your env files
+
+```sh
+# Add to infra/.env (for seed script)
+echo "API_URL=https://<id>.execute-api.<region>.amazonaws.com" >> infra/.env
+
+# Add to UI (for local development against your deployment)
+echo "VITE_API_URL=https://<id>.execute-api.<region>.amazonaws.com" > services/ui/.env.development
+```
+
+### 8. Seed the database
+
+```sh
+./infra/scripts/seed-deployed.sh
+```
+
+### 9. Verify
+
+```sh
+curl https://<id>.execute-api.<region>.amazonaws.com/api/health
+# → {"status":"ok","engine":"connected"}
+
+pnpm dev:ui
+# Open http://localhost:5173
+```
+
+### Updating after code changes
+
+```sh
+# Engine changes (Fargate)
+./infra/scripts/build-and-push.sh
+aws ecs update-service \
+  --cluster $(aws ecs list-clusters --region <region> --query 'clusterArns[0]' --output text) \
+  --service $(aws ecs list-services --cluster $(aws ecs list-clusters --region <region> --query 'clusterArns[0]' --output text) --region <region> --query 'serviceArns[0]' --output text) \
+  --force-new-deployment --region <region>
+
+# Backend API changes (Lambda) — CDK rebundles automatically
+cd infra && npx cdk deploy
+```
+
+### Teardown
+
+```sh
+cd infra
+npx cdk destroy
+```
+
+---
+
+## Project Structure
+
+```
+agent-workflow-engine/
+├── services/
+│   ├── workflow-engine/       Fargate: DAG executor + workflow CRUD + Postgres
+│   ├── backend-api/           Lambda: thin validation proxy to Engine
+│   └── ui/                    React: workflow builder + execution viewer
+├── infra/                     CDK: VPC + RDS + Fargate + Lambda + API Gateway
+│   ├── lib/agent-engine-stack.ts
+│   └── scripts/               build-and-push.sh, seed-deployed.sh
+├── DESIGN.md                  Architecture documentation
+└── README.md                  This file
+```
